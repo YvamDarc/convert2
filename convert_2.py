@@ -1,4 +1,5 @@
-import re
+import streamlit as st
+import pandas as pd
 from datetime import datetime
 
 def parse_quadra_line(line):
@@ -27,10 +28,6 @@ def quadra_to_ebp(quadra_lines):
     ebp_lines.append("Numéro de ligne,Date,Code journal,Compte,Vide,Libellé,Pièce,Montant,Sens,Echéance,Devise")
     
     for line in quadra_lines:
-        # Ignorer les lignes qui commencent par 'C'
-        if line.startswith('C'):
-            continue
-        
         code, date, libelle, montant, sens, ref_piece, journal = parse_quadra_line(line)
         ebp_line = format_ebp_line(index, date, code, journal, libelle, ref_piece, montant, sens)
         ebp_lines.append(ebp_line)
