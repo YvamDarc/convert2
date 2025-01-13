@@ -1,71 +1,102 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import io
 
+# Fonction pour parser les lignes Quadratus basées sur des tailles fixes
 def parse_quadra_line(line):
-    # Extraction des données de chaque ligne QUADRA en fonction des positions définies
-    code = line[1:9].strip()
-    journal = line[9:11].strip()
-    date = line[14:20].strip()
-    # Correction de la date pour qu'elle soit en format JJMMAAAA
-    date = date[:2] + date[2:4] + "20" + date[4:]  # Transforme 200723 en 20072023
-    libelle = line[21:41].strip()
-    sens = line[41].strip()
-    montant = line[42:55].replace('+', '').replace(',', '.').strip()
-    ref_piece = line[74:79].strip()
-    
-    return code, date, libelle, montant, sens, ref_piece, journal
+    return {
+        "Type de ligne": line[0:1].strip(),
+        "Numéro de compte": line[1:9].strip(),
+        "Code journal": line[9:11].strip(),
+        "Folio": line[11:14].strip(),
+        "Date d’écriture": line[14:20].strip(),
+        "Libellé de l’écriture": line[21:41].strip(),
+        "Sens de l’écriture": line[41:42].strip(),
+        "Signe du montant": line[42:43].strip(),
+        "Montant": line[43:55].strip(),
+        "Contrepartie": line[55:63].strip(),
+        "Date d’échéance": line[63:69].strip(),
+        "Lettrage": line[69:74].strip(),
+        "Numéro de pièce": line[74:79].strip(),
+        "Devise": line[99:102].strip(),
+        "Code journal 2": line[102:105].strip(),
+        "Libellé étendu": line[125:157].strip(),
+    }
 
-def format_ebp_line(index, date, code, journal, libelle, ref_piece, montant, sens):
-    # Formatage de la ligne pour le fichier EBP avec les nouvelles exigences
-    return f"{index},{date},{journal},{code},,\"{libelle}\",\"{ref_piece}\",{montant},{sens},,EUR"
+# Fonction pour convertir une date Quadratus en format JJ/MM/AAAA
+def convert_date_quad_to_ebp(date_quad):
+    return date_quad[:2] + "/" + date_quad[2:4] + "/" + date_quad[4:]
 
-def quadra_to_ebp(quadra_lines):
-    ebp_lines = []
-    index = 1  # Numéro de ligne commence à 1
-    
-    # Ajout de la ligne d'entête
-    ebp_lines.append("Numéro de ligne,Date,Code journal,Compte,Vide,Libellé,Pièce,Montant,Sens,Echéance,Devise")
-    
-    for line in quadra_lines:
-        code, date, libelle, montant, sens, ref_piece, journal = parse_quadra_line(line)
-        ebp_line = format_ebp_line(index, date, code, journal, libelle, ref_piece, montant, sens)
-        ebp_lines.append(ebp_line)
-        index += 1
-    
-    return ebp_lines
+# Fonction de conversion Quadratus -> EBP
+def convert_quad_to_ebp(parsed_lines):
+    ebp_data = []
+    for index, row in parsed_lines.iterrows():
+        numero_ligne = index + 1
+        date_ecriture = convert_date_quad_to_ebp(row['Date d’écriture'])
+        code_journal = row['Code journal 2'][:4]
+        compte = row['Numéro de compte']
+        libelle = ""
+        libelle_manuel = '"' + row["Libellé étendu"][:40] + '"'
+        numero_piece = '"' + row['Numéro de pièce'][:15] + '"'
+        montant = abs(float(row['Montant']) / 100)
+        sens = 'D' if row['Sens de l’écriture'] == 'D' else 'C'
+        date_echeance = convert_date_quad_to_ebp(row['Date d’échéance']) if row['Date d’échéance'] != '000000' else ""
+        devise = "EUR"
 
-def convert_quadra_to_ebp(uploaded_file):
-    # Lire le fichier QUADRA
-    quadra_lines = uploaded_file.read().decode("utf-8").splitlines()
-    
-    # Convertir en format EBP
-    ebp_lines = quadra_to_ebp(quadra_lines)
-    
-    # Convertir en dataframe pour un téléchargement facile
-    df = pd.DataFrame([line.split(",") for line in ebp_lines])
-    
-    return df
+        ebp_data.append([
+            numero_ligne,
+            date_ecriture,
+            code_journal,
+            compte,
+            libelle,
+            libelle_manuel,
+            numero_piece,
+            montant,
+            sens,
+            date_echeance,
+            devise,
+        ])
 
-# Streamlit App
-st.title("Convertisseur d'écritures QUADRA vers EBP")
+    columns = [
+        "Numéro de ligne", "Date", "Code journal", "Compte général", "Libellé automatique",
+        "Libellé manuel", "Numéro de pièce", "Montant", "Sens", "Date d'échéance", "Devise"
+    ]
+    df_ebp = pd.DataFrame(ebp_data, columns=columns)
+    return df_ebp
 
-uploaded_file = st.file_uploader("Téléchargez votre fichier QUADRA", type=["txt"])
+# Fonction pour convertir un DataFrame en fichier texte au format EBP
+def df_to_ebp_txt(df):
+    output = io.StringIO()
+    df.to_csv(output, sep=",", index=False, header=False, lineterminator="\n")
+    output.seek(0)
+    return output.read()
 
-if uploaded_file is not None:
-    df = convert_quadra_to_ebp(uploaded_file)
-    
-    st.write("Aperçu des premières lignes des écritures converties :")
-    st.dataframe(df.head())
+# Application Streamlit
+st.title("Conversion Quadratus vers EBP")
 
-    # Télécharger le fichier EBP
-    today = datetime.today().strftime('%Y%m%d')
-    filename = f"LIBSOCIETE_export_EBP_{today}.txt"
-    
-    csv = df.to_csv(index=False, header=False).encode('utf-8')
-    st.download_button(
-        label="Télécharger les écritures EBP",
-        data=csv,
-        file_name=filename,
-        mime='text/csv',
-    )
+uploaded_file = st.file_uploader("Importer un fichier Quadratus (TXT)", type=["txt"])
+
+if uploaded_file:
+    try:
+        # Lecture ligne par ligne du fichier TXT
+        lines = uploaded_file.read().decode("ISO-8859-1").splitlines()
+        parsed_lines = pd.DataFrame([parse_quadra_line(line) for line in lines])
+
+        st.subheader("Visualisation des écritures Quadratus")
+        st.dataframe(parsed_lines)
+
+        # Conversion au format EBP
+        df_ebp = convert_quad_to_ebp(parsed_lines)
+        st.subheader("Visualisation des écritures converties au format EBP")
+        st.dataframe(df_ebp)
+
+        # Télécharger le fichier EBP
+        ebp_txt = df_to_ebp_txt(df_ebp)
+        st.download_button(
+            label="Télécharger le fichier EBP",
+            data=ebp_txt,
+            file_name="ECRITURES.TXT",
+            mime="text/plain"
+        )
+    except Exception as e:
+        st.error(f"Erreur lors de la lecture ou du traitement du fichier : {e}")
