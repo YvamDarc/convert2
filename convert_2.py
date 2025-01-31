@@ -5,6 +5,9 @@ import io
 
 # Fonction pour parser les lignes Quadratus basées sur des tailles fixes
 def parse_quadra_line(line):
+    debit = float(line[43:55].strip()) / 100 if line[42:43] == '+' else 0.00
+    credit = float(line[43:55].strip()) / 100 if line[42:43] == '-' else 0.00
+    
     return {
         "JournalCode": line[9:11].strip(),
         "JournalLib": "Journal comptable",
@@ -17,18 +20,18 @@ def parse_quadra_line(line):
         "PieceRef": line[74:79].strip(),
         "PieceDate": line[14:20].strip(),
         "EcritureLib": line[21:41].strip(),
-        "Debit": float(line[43:55].strip()) / 100 if line[42:43] == '+' else 0,
-        "Credit": float(line[43:55].strip()) / 100 if line[42:43] == '-' else 0,
+        "Debit": debit,
+        "Credit": credit,
         "EcritureLet": "",
         "DateLet": "",
         "ValidDate": line[14:20].strip(),
-        "Montantdevise": "",
+        "Montantdevise": "0.00",
         "Idevise": "EUR"
     }
 
 # Fonction pour convertir une date Quadratus en format JJ/MM/AAAA
 def convert_date_quad_to_fec(date_quad):
-    return date_quad[:2] + "/" + date_quad[2:4] + "/" + date_quad[4:]
+    return date_quad[:2] + "/" + date_quad[2:4] + "/" + date_quad[4:] if date_quad.strip().isdigit() and len(date_quad) == 6 else ""
 
 # Fonction de conversion Quadratus -> FEC
 def convert_quad_to_fec(parsed_lines):
@@ -38,17 +41,16 @@ def convert_quad_to_fec(parsed_lines):
     df_fec["ValidDate"] = df_fec["ValidDate"].apply(convert_date_quad_to_fec)
     df_fec["DateLet"] = df_fec["DateLet"].apply(lambda x: convert_date_quad_to_fec(x) if x else "")
     
-    # Vérification du nombre de colonnes
+    # Vérification du nombre de colonnes et ajout des valeurs par défaut si nécessaire
     required_columns = [
         "JournalCode", "JournalLib", "EcritureNum", "EcritureDate", "CompteNum", "CompteLib",
         "CompAuxNum", "CompAuxLib", "PieceRef", "PieceDate", "EcritureLib", "Debit", "Credit",
         "EcritureLet", "DateLet", "ValidDate", "Montantdevise", "Idevise"
     ]
     
-    # Ajouter des colonnes manquantes si nécessaire
     for col in required_columns:
         if col not in df_fec.columns:
-            df_fec[col] = ""
+            df_fec[col] = "" if col not in ["Debit", "Credit", "Montantdevise"] else 0.00
     
     return df_fec[required_columns]
 
