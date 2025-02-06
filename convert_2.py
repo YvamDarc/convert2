@@ -76,7 +76,7 @@ if uploaded_file:
 
         # Création du DataFrame et suppression des lignes sans numéro de compte et sans montant
         df_quadra = pd.DataFrame(parsed_lines)
-        df_quadra = df_quadra[(df_quadra["CompteNum"].str.strip() != "") | ((df_quadra["Debit"] != "0,00") | (df_quadra["Credit"] != "0,00"))]
+        df_quadra = df_quadra[(df_quadra["CompteNum"].str.strip() != "") | (df_quadra["Debit"].astype(float) != 0.00) | (df_quadra["Credit"].astype(float) != 0.00)]
         df_quadra = convert_to_fec_format(df_quadra)
         
         st.subheader("Visualisation des écritures FEC")
