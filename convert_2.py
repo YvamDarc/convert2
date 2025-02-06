@@ -59,7 +59,7 @@ def convert_to_fec_format(df):
 # Fonction pour convertir un DataFrame en fichier texte au format FEC
 def df_to_fec_txt(df):
     output = io.StringIO()
-    df.to_csv(output, sep="|", index=False, encoding='utf-8', header=False)
+    df.to_csv(output, sep="\t", index=False, encoding='utf-8', header=True)
     output.seek(0)
     return output.read()
 
