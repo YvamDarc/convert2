@@ -6,7 +6,11 @@ import io
 # Fonction pour parser les lignes Quadratus basées sur des tailles fixes
 def parse_quadra_line(line):
     sens = line[41:42].strip()
-    montant = float(line[43:55].strip()) / 100 if line[43:55].strip().isdigit() else 0.00
+    try:
+        montant = float(line[43:55].strip()) / 100 if line[43:55].strip().isdigit() else 0.00
+    except ValueError:
+        montant = 0.00
+    
     debit = montant if sens == 'D' else 0.00
     credit = montant if sens == 'C' else 0.00
     compte_num = line[1:9].strip()
@@ -28,14 +32,14 @@ def parse_quadra_line(line):
         "EcritureLet": "",
         "DateLet": "",
         "ValidDate": "",
-        "Montantdevise": "0.00",
+        "Montantdevise": 0.00,
         "Idevise": "EUR"
     }
 
 # Fonction pour convertir une date Quadratus en format JJ/MM/AAAA
 def convert_date_quad_to_fec(date_quad):
     try:
-        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce').dt.strftime('%d/%m/%Y')
+        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce').strftime('%d/%m/%Y')
     except:
         return ""
 
@@ -46,9 +50,9 @@ def convert_to_fec_format(df):
     df["DateLet"] = df["DateLet"].apply(convert_date_quad_to_fec)
     
     # Définition du séparateur et format des nombres
-    df["Debit"] = df["Debit"].apply(lambda x: f"{x:.2f}".replace('.', ','))
-    df["Credit"] = df["Credit"].apply(lambda x: f"{x:.2f}".replace('.', ','))
-    df["Montantdevise"] = df["Montantdevise"].apply(lambda x: f"{x:.2f}".replace('.', ','))
+    df["Debit"] = df["Debit"].astype(float).apply(lambda x: f"{x:.2f}".replace('.', ','))
+    df["Credit"] = df["Credit"].astype(float).apply(lambda x: f"{x:.2f}".replace('.', ','))
+    df["Montantdevise"] = df["Montantdevise"].astype(float).apply(lambda x: f"{x:.2f}".replace('.', ','))
     
     return df
 
