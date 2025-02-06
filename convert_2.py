@@ -5,8 +5,10 @@ import io
 
 # Fonction pour parser les lignes Quadratus basées sur des tailles fixes
 def parse_quadra_line(line):
-    debit = float(line[43:55].strip()) / 100 if line[42:43] == '+' else 0.00
-    credit = float(line[43:55].strip()) / 100 if line[42:43] == '-' else 0.00
+    sens = line[41:42].strip()
+    montant = float(line[43:55].strip()) / 100 if line[43:55].strip().isdigit() else 0.00
+    debit = montant if sens == 'D' else 0.00
+    credit = montant if sens == 'C' else 0.00
     
     return {
         "JournalCode": line[9:11].strip(),
