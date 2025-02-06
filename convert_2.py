@@ -29,9 +29,12 @@ def parse_quadra_line(line):
         "Idevise": "EUR"
     }
 
-# Fonction pour convertir une date Quadratus en format JJ/MM/AAAA
-def convert_date_quad_to_fec(date_quad):
-    return date_quad[:2] + "/" + date_quad[2:4] + "/" + date_quad[4:] if date_quad.strip().isdigit() and len(date_quad) == 6 else ""
+# Fonction pour convertir une date Quadratus en format datetime
+def convert_date_quad_to_datetime(date_quad):
+    try:
+        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce')
+    except:
+        return pd.NaT
 
 # Application Streamlit
 st.title("Conversion Quadratus vers FEC")
@@ -45,6 +48,9 @@ if uploaded_file:
         parsed_lines = [parse_quadra_line(line) for line in lines]
 
         df_quadra = pd.DataFrame(parsed_lines)
+        df_quadra["EcritureDate"] = df_quadra["EcritureDate"].apply(convert_date_quad_to_datetime)
+        df_quadra.set_index("EcritureDate", inplace=True)
+        
         st.subheader("Visualisation des écritures Quadratus")
         st.dataframe(df_quadra)
     except Exception as e:
