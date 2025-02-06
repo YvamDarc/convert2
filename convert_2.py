@@ -32,12 +32,32 @@ def parse_quadra_line(line):
         "Idevise": "EUR"
     }
 
-# Fonction pour convertir une date Quadratus en format datetime
-def convert_date_quad_to_datetime(date_quad):
+# Fonction pour convertir une date Quadratus en format JJ/MM/AAAA
+def convert_date_quad_to_fec(date_quad):
     try:
-        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce')
+        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce').dt.strftime('%d/%m/%Y')
     except:
-        return pd.NaT
+        return ""
+
+# Fonction pour convertir le DataFrame au format FEC
+def convert_to_fec_format(df):
+    df["EcritureDate"] = df["EcritureDate"].apply(convert_date_quad_to_fec)
+    df["PieceDate"] = df["PieceDate"].apply(convert_date_quad_to_fec)
+    df["DateLet"] = df["DateLet"].apply(convert_date_quad_to_fec)
+    
+    # Définition du séparateur et format des nombres
+    df["Debit"] = df["Debit"].apply(lambda x: f"{x:.2f}".replace('.', ','))
+    df["Credit"] = df["Credit"].apply(lambda x: f"{x:.2f}".replace('.', ','))
+    df["Montantdevise"] = df["Montantdevise"].apply(lambda x: f"{x:.2f}".replace('.', ','))
+    
+    return df
+
+# Fonction pour convertir un DataFrame en fichier texte au format FEC
+def df_to_fec_txt(df):
+    output = io.StringIO()
+    df.to_csv(output, sep="|", index=False, encoding='utf-8', header=False)
+    output.seek(0)
+    return output.read()
 
 # Application Streamlit
 st.title("Conversion Quadratus vers FEC")
@@ -52,12 +72,19 @@ if uploaded_file:
 
         # Création du DataFrame et suppression des lignes sans numéro de compte et sans montant
         df_quadra = pd.DataFrame(parsed_lines)
-        df_quadra = df_quadra[(df_quadra["CompteNum"].str.strip() != "") | ((df_quadra["Debit"] != 0.00) | (df_quadra["Credit"] != 0.00))]
+        df_quadra = df_quadra[(df_quadra["CompteNum"].str.strip() != "") | ((df_quadra["Debit"] != "0,00") | (df_quadra["Credit"] != "0,00"))]
+        df_quadra = convert_to_fec_format(df_quadra)
         
-        df_quadra["EcritureDate"] = df_quadra["EcritureDate"].apply(convert_date_quad_to_datetime)
-        df_quadra.set_index("EcritureDate", inplace=True)
-        
-        st.subheader("Visualisation des écritures Quadratus")
+        st.subheader("Visualisation des écritures FEC")
         st.dataframe(df_quadra)
+        
+        # Télécharger le fichier FEC
+        fec_txt = df_to_fec_txt(df_quadra)
+        st.download_button(
+            label="Télécharger le fichier FEC",
+            data=fec_txt,
+            file_name="FEC.txt",
+            mime="text/plain"
+        )
     except Exception as e:
         st.error(f"Erreur lors de la lecture ou du traitement du fichier : {e}")
