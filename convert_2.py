@@ -9,14 +9,15 @@ def parse_quadra_line(line):
     montant = float(line[43:55].strip()) / 100 if line[43:55].strip().isdigit() else 0.00
     debit = montant if sens == 'D' else 0.00
     credit = montant if sens == 'C' else 0.00
+    compte_num = line[1:9].strip()
     
     return {
         "JournalCode": line[9:11].strip(),
         "JournalLib": "Journal comptable",
         "EcritureNum": line[74:79].strip(),
         "EcritureDate": line[14:20].strip(),
-        "CompteNum": line[1:9].strip(),
-        "CompteLib": "Libellé du compte",
+        "CompteNum": compte_num,
+        "CompteLib": "Libellé du compte" if compte_num else "",
         "CompAuxNum": "",
         "CompAuxLib": "",
         "PieceRef": line[74:79].strip(),
@@ -49,7 +50,10 @@ if uploaded_file:
         lines = uploaded_file.read().decode("ISO-8859-1").splitlines()
         parsed_lines = [parse_quadra_line(line) for line in lines]
 
+        # Création du DataFrame et suppression des lignes sans numéro de compte et sans montant
         df_quadra = pd.DataFrame(parsed_lines)
+        df_quadra = df_quadra[(df_quadra["CompteNum"].str.strip() != "") | ((df_quadra["Debit"] != 0.00) | (df_quadra["Credit"] != 0.00))]
+        
         df_quadra["EcritureDate"] = df_quadra["EcritureDate"].apply(convert_date_quad_to_datetime)
         df_quadra.set_index("EcritureDate", inplace=True)
         
