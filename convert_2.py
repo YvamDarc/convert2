@@ -27,7 +27,7 @@ def parse_quadra_line(line):
         "Credit": credit,
         "EcritureLet": "",
         "DateLet": "",
-        "ValidDate": line[14:20].strip(),
+        "ValidDate": "",
         "Montantdevise": "0.00",
         "Idevise": "EUR"
     }
