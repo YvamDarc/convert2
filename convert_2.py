@@ -14,7 +14,12 @@ def parse_quadra_line(line):
     debit = montant if sens == 'D' else 0.00
     credit = montant if sens == 'C' else 0.00
     compte_num = line[1:9].strip()
-    piece_ref = line[74:79].strip() if line[74:79].strip() else "000000"
+    
+    # Priorité de la récupération du numéro de pièce
+    piece_ref = line[232:252].strip() if len(line) >= 252 and line[232:252].strip() else \
+                line[149:169].strip() if len(line) >= 169 and line[149:169].strip() else \
+                line[100:120].strip() if len(line) >= 120 and line[100:120].strip() else \
+                line[75:95].strip() if len(line) >= 95 and line[75:95].strip() else "000000"
     
     return {
         "JournalCode": line[9:11].strip(),
