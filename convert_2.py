@@ -14,6 +14,7 @@ def parse_quadra_line(line):
     debit = montant if sens == 'D' else 0.00
     credit = montant if sens == 'C' else 0.00
     compte_num = line[1:9].strip()
+    piece_ref = line[74:79].strip() if line[74:79].strip() else "000000"
     
     return {
         "JournalCode": line[9:11].strip(),
@@ -24,7 +25,7 @@ def parse_quadra_line(line):
         "CompteLib": "Libellé du compte" if compte_num else "",
         "CompAuxNum": "",
         "CompAuxLib": "",
-        "PieceRef": line[74:79].strip(),
+        "PieceRef": piece_ref,
         "PieceDate": line[14:20].strip(),
         "EcritureLib": line[21:41].strip(),
         "Debit": debit,
@@ -36,10 +37,10 @@ def parse_quadra_line(line):
         "Idevise": "EUR"
     }
 
-# Fonction pour convertir une date Quadratus en format JJ/MM/AAAA
+# Fonction pour convertir une date Quadratus en format AAAAMMJJ
 def convert_date_quad_to_fec(date_quad):
     try:
-        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce').strftime('%d/%m/%Y')
+        return pd.to_datetime(date_quad, format='%d%m%y', errors='coerce').strftime('%Y%m%d')
     except:
         return ""
 
