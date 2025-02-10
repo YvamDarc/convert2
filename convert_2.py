@@ -16,10 +16,10 @@ def parse_quadra_line(line):
     compte_num = line[1:9].strip()
     
     # Priorité de la récupération du numéro de pièce
-    piece_ref = line[232:252].strip() if len(line) >= 252 and line[232:252].strip() else \
-                line[149:169].strip() if len(line) >= 169 and line[149:169].strip() else \
-                line[100:120].strip() if len(line) >= 120 and line[100:120].strip() else \
-                line[75:95].strip() if len(line) >= 95 and line[75:95].strip() else "000000"
+    piece_ref = line[231:252].strip() if len(line) >= 252 and line[232:252].strip() else \
+                line[148:169].strip() if len(line) >= 169 and line[149:169].strip() else \
+                line[99:120].strip() if len(line) >= 120 and line[100:120].strip() else \
+                line[74:95].strip() if len(line) >= 95 and line[75:95].strip() else "000000"
     
     return {
         "JournalCode": line[9:11].strip(),
