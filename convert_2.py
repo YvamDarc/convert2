@@ -1,14 +1,7 @@
 import io
-from dataclasses import dataclass
-from typing import List, Optional
-
-import pandas as pd
 import streamlit as st
+import pandas as pd
 
-
-# ============================
-# Constantes / config
-# ============================
 FEC_COLUMNS = [
     "JournalCode", "JournalLib",
     "EcritureNum", "EcritureDate",
@@ -22,70 +15,56 @@ FEC_COLUMNS = [
     "Montantdevise", "Idevise"
 ]
 
-ENCODINGS_TO_TRY = ["ISO-8859-1", "cp1252", "utf-8"]
+def safe_slice(line: str, a: int, b: int) -> str:
+    if not line:
+        return ""
+    if a >= len(line):
+        return ""
+    return line[a:min(b, len(line))]
 
-
-# ============================
-# Helpers robustes
-# ============================
-def safe_slice(s: str, a: int, b: int) -> str:
-    """Slice sécurisé : ne plante pas si la ligne est plus courte."""
+def parse_amount_centimes(s: str) -> float:
+    s = (s or "").strip()
     if not s:
-        return ""
-    if a >= len(s):
-        return ""
-    return s[a:min(b, len(s))]
-
-
-def parse_amount_centimes(raw: str) -> float:
-    """Convertit une zone '000000001234' en euros (12.34)."""
-    t = (raw or "").strip()
-    if not t:
         return 0.0
-    # Certains exports contiennent des espaces/zeros => on ne garde que digits + signe
-    t = "".join(ch for ch in t if ch.isdigit() or ch in "+-")
-    if not t:
+    # Quadratus: souvent montant en centimes, parfois avec signe
+    # On garde digits + signe
+    cleaned = "".join(ch for ch in s if ch.isdigit() or ch == "-")
+    if cleaned in ("", "-"):
         return 0.0
     try:
-        return float(int(t)) / 100.0
-    except Exception:
+        return float(cleaned) / 100.0
+    except ValueError:
         return 0.0
 
-
 def convert_date_quad_to_fec(date_quad: str) -> str:
-    """Convertit JJMMYY -> AAAAMMJJ. Renvoie '' si non parsable."""
-    t = (date_quad or "").strip()
-    if not t:
+    # Quadratus: ddmmyy
+    try:
+        dt = pd.to_datetime(date_quad, format="%d%m%y", errors="coerce")
+        return "" if pd.isna(dt) else dt.strftime("%Y%m%d")
+    except Exception:
         return ""
-    dt = pd.to_datetime(t, format="%d%m%y", errors="coerce")
-    if pd.isna(dt):
-        return ""
-    return dt.strftime("%Y%m%d")
-
 
 def pick_piece_ref(line: str) -> str:
-    """
-    Priorité de la récupération du numéro de pièce.
-    Attention : on utilise safe_slice partout et on garde la logique d'origine.
-    """
-    # on teste les zones dans l'ordre, et on renvoie la 1ère non vide
-    candidates = [
-        safe_slice(line, 231, 252).strip(),  # ancien: line[231:252]
-        safe_slice(line, 148, 169).strip(),
-        safe_slice(line, 99, 120).strip(),
-        safe_slice(line, 74, 95).strip(),
-    ]
-    for c in candidates:
-        if c:
-            return c
+    # Priorité comme ton code, mais en safe
+    c1 = safe_slice(line, 231, 252).strip()
+    if len(line) >= 252 and safe_slice(line, 232, 252).strip():
+        return c1
+
+    c2 = safe_slice(line, 148, 169).strip()
+    if len(line) >= 169 and safe_slice(line, 149, 169).strip():
+        return c2
+
+    c3 = safe_slice(line, 99, 120).strip()
+    if len(line) >= 120 and safe_slice(line, 100, 120).strip():
+        return c3
+
+    c4 = safe_slice(line, 74, 95).strip()
+    if len(line) >= 95 and safe_slice(line, 75, 95).strip():
+        return c4
+
     return "000000"
 
-
 def parse_quadra_line(line: str) -> dict:
-    """
-    Parse une ligne Quadratus (tailles fixes) en dict FEC.
-    Sécurisé contre les lignes plus courtes.
-    """
     sens = safe_slice(line, 41, 42).strip().upper()
 
     montant = parse_amount_centimes(safe_slice(line, 43, 55))
@@ -95,14 +74,13 @@ def parse_quadra_line(line: str) -> dict:
     compte_num = safe_slice(line, 1, 9).strip()
 
     ecriture_date_raw = safe_slice(line, 14, 20).strip()
-    ecriture_num = safe_slice(line, 74, 79).strip()
-    ecriture_lib = safe_slice(line, 21, 41).strip()
-    journal_code = safe_slice(line, 9, 11).strip()
+    piece_date_raw = ecriture_date_raw
 
+    ecriture_num = safe_slice(line, 74, 79).strip()
     piece_ref = pick_piece_ref(line)
 
     return {
-        "JournalCode": journal_code,
+        "JournalCode": safe_slice(line, 9, 11).strip(),
         "JournalLib": "Journal comptable",
         "EcritureNum": ecriture_num,
         "EcritureDate": ecriture_date_raw,
@@ -111,92 +89,90 @@ def parse_quadra_line(line: str) -> dict:
         "CompAuxNum": "",
         "CompAuxLib": "",
         "PieceRef": piece_ref,
-        "PieceDate": ecriture_date_raw,
-        "EcritureLib": ecriture_lib,
+        "PieceDate": piece_date_raw,
+        "EcritureLib": safe_slice(line, 21, 41).strip(),
         "Debit": debit,
         "Credit": credit,
         "EcritureLet": "",
         "DateLet": "",
         "ValidDate": "",
-        "Montantdevise": 0.00,
+        "Montantdevise": 0.0,
         "Idevise": "EUR",
     }
 
-
 def convert_to_fec_format(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convertit les dates + force les montants au format FEC (décimales avec virgule comme ton script).
-    """
     out = df.copy()
 
-    out["EcritureDate"] = out["EcritureDate"].apply(convert_date_quad_to_fec)
-    out["PieceDate"] = out["PieceDate"].apply(convert_date_quad_to_fec)
-    out["DateLet"] = out["DateLet"].apply(convert_date_quad_to_fec)
+    out["EcritureDate"] = out["EcritureDate"].astype(str).apply(convert_date_quad_to_fec)
+    out["PieceDate"] = out["PieceDate"].astype(str).apply(convert_date_quad_to_fec)
+    out["DateLet"] = out["DateLet"].astype(str).apply(convert_date_quad_to_fec)
 
-    # Montants : on garde la logique de ton fichier (virgule)
+    # FEC en général: décimales avec point (souvent attendu)
+    # Si toi tu veux absolument la virgule, remets .replace('.', ',')
     for col in ["Debit", "Credit", "Montantdevise"]:
-        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
-        out[col] = out[col].map(lambda x: f"{x:.2f}".replace(".", ","))
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0).map(lambda x: f"{x:.2f}")
 
-    # Remet les colonnes dans l'ordre FEC si besoin
-    out = out.reindex(columns=FEC_COLUMNS, fill_value="")
+    # Nettoyage NaN
+    for c in out.columns:
+        out[c] = out[c].astype(str).replace({"nan": "", "None": ""})
+
     return out
 
+def df_to_fec_txt_bytes(df: pd.DataFrame) -> bytes:
+    buf = io.StringIO()
+    df.to_csv(buf, sep="\t", index=False, encoding="utf-8", lineterminator="\n")
+    return buf.getvalue().encode("utf-8")
 
-def df_to_fec_txt(df: pd.DataFrame) -> str:
-    output = io.StringIO()
-    df.to_csv(output, sep="\t", index=False, encoding="utf-8", header=True, lineterminator="\n")
-    return output.getvalue()
-
-
-def read_uploaded_text(uploaded_file) -> List[str]:
-    """Lit le fichier uploadé en essayant plusieurs encodages."""
-    raw = uploaded_file.read()
-    last_err: Optional[Exception] = None
-    for enc in ENCODINGS_TO_TRY:
-        try:
-            return raw.decode(enc).splitlines()
-        except Exception as e:
-            last_err = e
-    raise RuntimeError(f"Impossible de décoder le fichier avec {ENCODINGS_TO_TRY}. Dernière erreur: {last_err}")
-
-
-# ============================
+# -------------------------
 # Streamlit UI
-# ============================
+# -------------------------
 st.set_page_config(page_title="Conversion Quadratus vers FEC", layout="wide")
-st.title("Conversion Quadratus vers FEC")
+st.title("Conversion Quadratus → FEC")
 
-uploaded_file = st.file_uploader("Importer un fichier Quadratus (TXT)", type=["txt"])
+uploaded_file = st.file_uploader("Importer un fichier Quadratus (.txt)", type=["txt"])
 
-if uploaded_file:
+if uploaded_file is None:
+    st.info("Charge un fichier .txt Quadratus.")
+    st.stop()
+
+try:
+    raw_bytes = uploaded_file.getvalue()
+    # Essai ISO-8859-1 (comme tu avais) puis fallback UTF-8
     try:
-        lines = read_uploaded_text(uploaded_file)
+        text = raw_bytes.decode("ISO-8859-1")
+    except UnicodeDecodeError:
+        text = raw_bytes.decode("utf-8", errors="replace")
 
-        # Parse
-        parsed_lines = [parse_quadra_line(line) for line in lines if line and line.strip()]
+    lines = text.splitlines()
 
-        df_quadra = pd.DataFrame(parsed_lines)
+    st.write(f"📄 Lignes lues : **{len(lines)}**")
 
-        # Suppression des lignes inutiles (comme ton script)
-        df_quadra = df_quadra[
-            (df_quadra["CompteNum"].astype(str).str.strip() != "")
-            | (pd.to_numeric(df_quadra["Debit"], errors="coerce").fillna(0.0) != 0.0)
-            | (pd.to_numeric(df_quadra["Credit"], errors="coerce").fillna(0.0) != 0.0)
-        ]
+    parsed = [parse_quadra_line(line) for line in lines if line.strip()]
 
-        df_fec = convert_to_fec_format(df_quadra)
+    df = pd.DataFrame(parsed, columns=FEC_COLUMNS)
 
-        st.subheader("Visualisation des écritures FEC")
-        st.dataframe(df_fec, use_container_width=True)
+    # Filtre: on garde si compte ou montant non nul
+    df = df[
+        (df["CompteNum"].astype(str).str.strip() != "")
+        | (pd.to_numeric(df["Debit"], errors="coerce").fillna(0.0) != 0.0)
+        | (pd.to_numeric(df["Credit"], errors="coerce").fillna(0.0) != 0.0)
+    ].copy()
 
-        fec_txt = df_to_fec_txt(df_fec)
-        st.download_button(
-            label="Télécharger le fichier FEC",
-            data=fec_txt,
-            file_name="FEC.txt",
-            mime="text/plain",
-        )
+    df_fec = convert_to_fec_format(df)
 
-    except Exception as e:
-        st.error(f"Erreur lors de la lecture ou du traitement du fichier : {e}")
+    st.subheader("Aperçu (200 premières lignes)")
+    st.dataframe(df_fec.head(200), use_container_width=True, height=520)
+
+    with st.expander("Afficher tout (attention si très gros fichier)"):
+        st.dataframe(df_fec, use_container_width=True, height=520)
+
+    st.subheader("Téléchargement")
+    st.download_button(
+        "Télécharger FEC.txt",
+        data=df_to_fec_txt_bytes(df_fec),
+        file_name="FEC.txt",
+        mime="text/plain",
+    )
+
+except Exception as e:
+    st.exception(e)
